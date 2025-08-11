@@ -1,3 +1,5 @@
+// ignore_for_file: unnecessary_type_check, use_key_in_widget_constructors, library_private_types_in_public_api, unnecessary_nullable_for_final_variable_declarations, deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
