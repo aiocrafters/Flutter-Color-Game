@@ -26,7 +26,7 @@ The game challenges players to find the correct color tile based on a spoken pro
 
 Below is the editable SVG flow diagram illustrating the game logic from start to finish. It matches the game’s colorful UI palette for an engaging visual guide:
 
-![Color Challenge Game Flow Diagram](./flow_diagram.svg)
+![Color Challenge Game Flow Diagram](./flow_diagram.png)
 
 ## Dependencies
 
