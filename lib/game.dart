@@ -1,22 +1,25 @@
-// ignore_for_file: unnecessary_type_check, use_key_in_widget_constructors, library_private_types_in_public_api, unnecessary_nullable_for_final_variable_declarations, deprecated_member_use
+// ignore_for_file: deprecated_member_use, use_super_parameters
 
+import 'dart:async';
+import 'dart:math';
+import 'dart:ui';
+
+import 'package:confetti/confetti.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
-import 'package:confetti/confetti.dart';
 
 import 'color.dart'; // provides `colors` list
 import 'confetti.dart'; // provides `AppConfetti`
 
-import 'dart:async';
-import 'dart:math';
-
 class ColorGameScreen extends StatefulWidget {
+  const ColorGameScreen({Key? key}) : super(key: key);
+
   @override
-  _ColorGameScreenState createState() => _ColorGameScreenState();
+  ColorGameScreenState createState() => ColorGameScreenState();
 }
 
-class _ColorGameScreenState extends State<ColorGameScreen>
+class ColorGameScreenState extends State<ColorGameScreen>
     with TickerProviderStateMixin {
   final FlutterTts flutterTts = FlutterTts();
   Timer? audioTimer;
@@ -41,14 +44,11 @@ class _ColorGameScreenState extends State<ColorGameScreen>
   // Helper: lookup Color by name from colors list.
   Color? get targetColorValue {
     if (targetColor.isEmpty) return null;
-    final match = colors.firstWhere(
-      (c) => c['name'] == targetColor,
-      orElse: () => {},
+    final match = colors.cast<Map<String, dynamic>?>().firstWhere(
+      (c) => c?['name'] == targetColor,
+      orElse: () => null,
     );
-    if (match is Map && match.containsKey('color')) {
-      return match['color'] as Color;
-    }
-    return null;
+    return match?['color'] as Color?;
   }
 
   @override
@@ -239,36 +239,96 @@ class _ColorGameScreenState extends State<ColorGameScreen>
     });
   }
 
-  Widget buildPaletteIcon() {
-    // Use up to six colors for the gradient ring (or fallback to defaults if fewer exist).
-    final gradientColors = <Color>[];
-    for (var i = 0; i < colors.length && gradientColors.length < 6; i++) {
+  // Modernized palette icon with sweep gradient ring and frosted core.
+  Widget buildPaletteIcon({double size = 28, double ringThickness = 3.0}) {
+    // Collect up to 8 colors from the provided list for a rich gradient ring
+    final ringStops = <Color>[];
+    for (var i = 0; i < colors.length && ringStops.length < 8; i++) {
       final c = colors[i]['color'];
-      if (c is Color) gradientColors.add(c);
-    }
-    if (gradientColors.isEmpty) {
-      gradientColors.addAll(const [
-        Colors.red,
-        Colors.orange,
-        Colors.yellow,
-        Colors.green,
-        Colors.blue,
-        Colors.purple,
-      ]);
+      if (c is Color) ringStops.add(c);
     }
 
+    // Fallback palette if no custom colors found
+    final fallbackStops = const [
+      Color(0xFFFF5757), // red
+      Color(0xFFFFA857), // orange
+      Color(0xFFFFE457), // yellow
+      Color(0xFF57E389), // green
+      Color(0xFF57B2FF), // blue
+      Color(0xFF8C57FF), // indigo/violet
+      Color(0xFFFF57D1), // magenta
+    ];
+    final gradientStops = ringStops.isNotEmpty ? ringStops : fallbackStops;
+
+    // Sizes
+    final outerSize = size;
+    final innerSize = outerSize - ringThickness * 2;
+
     return Container(
-      width: 28,
-      height: 28,
+      width: outerSize,
+      height: outerSize,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        gradient: LinearGradient(
-          colors: gradientColors,
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+          BoxShadow(
+            color: Colors.white.withValues(alpha: 0.7),
+            blurRadius: 2,
+            spreadRadius: -2,
+          ),
+        ],
+        border: Border.all(
+          color: Colors.black.withValues(alpha: 0.04),
+          width: 1,
         ),
       ),
-      child: const Icon(Icons.palette, color: Colors.white, size: 16),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Gradient ring
+          CustomPaint(
+            size: Size.square(outerSize),
+            painter: _GradientRingPainter(
+              colors: gradientStops,
+              thickness: ringThickness,
+            ),
+          ),
+          // Inner frosted core
+          Container(
+            width: innerSize,
+            height: innerSize,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white.withValues(alpha: 0.92),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.06),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+          ),
+          // Palette glyph
+          Icon(
+            Icons.palette_rounded,
+            size: innerSize * 0.55,
+            color: const Color(0xFF2D3748),
+            shadows: [
+              Shadow(
+                color: Colors.black.withValues(alpha: 0.12),
+                blurRadius: 2,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -305,10 +365,8 @@ class _ColorGameScreenState extends State<ColorGameScreen>
       return const SizedBox.shrink();
     }
 
-    final Color? swatch = targetColorValue ?? Colors.transparent;
-    final brightness = swatch == null
-        ? Brightness.light
-        : ThemeData.estimateBrightnessForColor(swatch);
+    final Color swatch = targetColorValue ?? Colors.transparent;
+    final brightness = ThemeData.estimateBrightnessForColor(swatch);
     final textColor = brightness == Brightness.light
         ? Colors.black
         : Colors.white;
@@ -321,12 +379,15 @@ class _ColorGameScreenState extends State<ColorGameScreen>
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: (swatch ?? Colors.black).withOpacity(0.35),
+            color: (swatch).withValues(alpha: 0.35),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
         ],
-        border: Border.all(color: Colors.black.withOpacity(0.08), width: 1),
+        border: Border.all(
+          color: Colors.black.withValues(alpha: 0.08),
+          width: 1,
+        ),
       ),
       child: Text(
         'Find: $targetColor',
@@ -337,7 +398,7 @@ class _ColorGameScreenState extends State<ColorGameScreen>
           fontFamily: 'Comic Neue',
           shadows: [
             Shadow(
-              color: Colors.black.withOpacity(0.15),
+              color: Colors.black.withValues(alpha: 0.15),
               blurRadius: 2,
               offset: const Offset(1, 1),
             ),
@@ -403,7 +464,7 @@ class _ColorGameScreenState extends State<ColorGameScreen>
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: [
                     BoxShadow(
-                      color: bg.withOpacity(0.35),
+                      color: bg.withValues(alpha: 0.35),
                       blurRadius: 8,
                       offset: const Offset(0, 4),
                     ),
@@ -420,7 +481,7 @@ class _ColorGameScreenState extends State<ColorGameScreen>
                       fontFamily: 'Comic Neue',
                       shadows: [
                         Shadow(
-                          color: Colors.black.withOpacity(0.25),
+                          color: Colors.black.withValues(alpha: 0.25),
                           blurRadius: 2,
                           offset: const Offset(1, 1),
                         ),
@@ -482,7 +543,7 @@ class _ColorGameScreenState extends State<ColorGameScreen>
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withValues(alpha: 0.08),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -491,7 +552,7 @@ class _ColorGameScreenState extends State<ColorGameScreen>
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          buildPaletteIcon(),
+          buildPaletteIcon(size: 24, ringThickness: 2.6),
           const SizedBox(width: 8),
           Text(
             'Round $displayRound of 10',
@@ -580,9 +641,9 @@ class _ColorGameScreenState extends State<ColorGameScreen>
                     borderRadius: BorderRadius.circular(18),
                   ),
                 ),
-                child: Row(
+                child: const Row(
                   mainAxisSize: MainAxisSize.min,
-                  children: const [
+                  children: [
                     Icon(Icons.refresh, size: 16),
                     SizedBox(width: 6),
                     Text('Start Over', style: TextStyle(fontSize: 14)),
@@ -627,7 +688,7 @@ class _ColorGameScreenState extends State<ColorGameScreen>
                         borderRadius: BorderRadius.circular(22),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.2),
+                            color: Colors.black.withValues(alpha: 0.2),
                             blurRadius: 20,
                             offset: const Offset(0, 10),
                           ),
@@ -655,7 +716,7 @@ class _ColorGameScreenState extends State<ColorGameScreen>
                             isSuccess
                                 ? 'You found the right color!'
                                 : 'Keep looking for $targetColor',
-                            style: TextStyle(
+                            style: const TextStyle(
                               fontSize: 14,
                               color: Colors.grey,
                               fontFamily: 'Comic Neue',
@@ -682,5 +743,51 @@ class _ColorGameScreenState extends State<ColorGameScreen>
     popupController.dispose();
     buttonController.dispose();
     super.dispose();
+  }
+}
+
+// Painter that draws a smooth sweep gradient ring for the palette icon.
+class _GradientRingPainter extends CustomPainter {
+  _GradientRingPainter({required this.colors, required this.thickness});
+
+  final List<Color> colors;
+  final double thickness;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final center = rect.center;
+    final radius = size.width / 2;
+
+    final gradient = SweepGradient(
+      startAngle: -pi / 2,
+      endAngle: 3 * pi / 2,
+      colors: [...colors, colors.first],
+      stops: List<double>.generate(
+        colors.length + 1,
+        (i) => i / (colors.length),
+      ),
+    );
+
+    final ringPaint = Paint()
+      ..shader = gradient.createShader(rect)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = thickness
+      ..strokeCap = StrokeCap.round
+      ..isAntiAlias = true;
+
+    canvas.drawCircle(center, radius - thickness / 2, ringPaint);
+
+    final glowPaint = Paint()
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6)
+      ..color = Colors.white.withValues(alpha: 0.4)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+    canvas.drawCircle(center, radius - thickness - 1, glowPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _GradientRingPainter oldDelegate) {
+    return oldDelegate.colors != colors || oldDelegate.thickness != thickness;
   }
 }
