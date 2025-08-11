@@ -26,7 +26,7 @@ class _ColorGameScreenState extends State<ColorGameScreen>
   late Animation<double> buttonAnimation;
 
   int currentRound = 1;
-  String targetColor = '';
+  String targetColor = ''; // name
   String? lastTarget;
   bool gameStarted = false;
   bool showPopup = false;
@@ -35,6 +35,19 @@ class _ColorGameScreenState extends State<ColorGameScreen>
 
   // Display "Round 0 of 10" initially, without changing logic.
   int get displayRound => (currentRound - 1).clamp(0, 10);
+
+  // Helper: lookup Color by name from colors list.
+  Color? get targetColorValue {
+    if (targetColor.isEmpty) return null;
+    final match = colors.firstWhere(
+      (c) => c['name'] == targetColor,
+      orElse: () => {},
+    );
+    if (match is Map && match.containsKey('color')) {
+      return match['color'] as Color;
+    }
+    return null;
+  }
 
   @override
   void initState() {
@@ -80,14 +93,16 @@ class _ColorGameScreenState extends State<ColorGameScreen>
       do {
         next = colors[rnd.nextInt(colors.length)]['name'];
       } while (next == lastTarget && colors.length > 1);
-      targetColor = next;
-      lastTarget = next;
+      final newColor = next;
 
       if (!mounted) return;
       setState(() {
+        targetColor = newColor; // update name
+        lastTarget = newColor;
         gameStarted = true;
         isPlaying = true;
       });
+
       startColorAudio();
     } else {
       showGameComplete();
@@ -282,14 +297,61 @@ class _ColorGameScreenState extends State<ColorGameScreen>
     );
   }
 
+  // Rectangular label showing the current target color and its name.
+  Widget buildTargetColorLabel() {
+    if (!gameStarted || targetColor.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final Color? swatch = targetColorValue ?? Colors.transparent;
+    final brightness = swatch == null
+        ? Brightness.light
+        : ThemeData.estimateBrightnessForColor(swatch);
+    final textColor = brightness == Brightness.light
+        ? Colors.black
+        : Colors.white;
+
+    return Container(
+      margin: const EdgeInsets.only(top: 8, bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: swatch,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: (swatch ?? Colors.black).withOpacity(0.35),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        border: Border.all(color: Colors.black.withOpacity(0.08), width: 1),
+      ),
+      child: Text(
+        'Find: $targetColor',
+        style: TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
+          color: textColor,
+          fontFamily: 'Comic Neue',
+          shadows: [
+            Shadow(
+              color: Colors.black.withOpacity(0.15),
+              blurRadius: 2,
+              offset: const Offset(1, 1),
+            ),
+          ],
+        ),
+        textAlign: TextAlign.center,
+      ),
+    );
+  }
+
   // Adaptive grid: uses all colors from color.dart and adjusts columns by width.
   Widget buildColorGrid(BoxConstraints constraints) {
     final width = constraints.maxWidth;
     const spacing = 10.0;
     const horizontalPadding = 16.0;
 
-    // Decide columns by available width for a comfortable tile size.
-    // Rough target tile width ≈ 80–100px.
     int crossAxisCount;
     if (width >= 700) {
       crossAxisCount = 7;
@@ -300,15 +362,12 @@ class _ColorGameScreenState extends State<ColorGameScreen>
     } else if (width >= 380) {
       crossAxisCount = 4;
     } else {
-      crossAxisCount = 3; // very small screens
+      crossAxisCount = 3;
     }
 
-    // Compute tile width considering padding and spacing.
     final usableWidth =
         width - (horizontalPadding * 2) - (spacing * (crossAxisCount - 1));
     final tileWidth = usableWidth / crossAxisCount;
-
-    // Set a compact height based on width, with min/max bounds.
     final tileHeight = tileWidth.clamp(64.0, 100.0);
 
     return IgnorePointer(
@@ -485,24 +544,6 @@ class _ColorGameScreenState extends State<ColorGameScreen>
       textAlign: TextAlign.center,
     );
 
-    final startOverButton = ElevatedButton(
-      onPressed: resetGame,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.grey,
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: const [
-          Icon(Icons.refresh, size: 16),
-          SizedBox(width: 6),
-          Text('Start Over', style: TextStyle(fontSize: 14)),
-        ],
-      ),
-    );
-
     final content = LayoutBuilder(
       builder: (context, constraints) {
         final body = Column(
@@ -512,23 +553,40 @@ class _ColorGameScreenState extends State<ColorGameScreen>
             subtitle,
             const SizedBox(height: sectionGap),
             roundChip,
-            const SizedBox(height: 10),
-            buildProgressBar(),
-            const SizedBox(height: sectionGap),
+            // New: Target color label rect above the Start/Repeat button
+            buildTargetColorLabel(),
+            const SizedBox(height: 6),
             playButton,
             const SizedBox(height: 6),
             hint,
             const SizedBox(height: 12),
-            // Full adaptive grid using every color from lib/color.dart
-            SizedBox(
-              // Constrain height so grid area becomes scrollable if needed
-              height: height * 0.55,
-              child: buildColorGrid(constraints),
-            ),
+            // Grid area (scrollable as colors grow)
+            SizedBox(height: height * 0.55, child: buildColorGrid(constraints)),
             const SizedBox(height: 8),
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
-              child: startOverButton,
+              child: ElevatedButton(
+                onPressed: resetGame,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.grey,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 22,
+                    vertical: 10,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    Icon(Icons.refresh, size: 16),
+                    SizedBox(width: 6),
+                    Text('Start Over', style: TextStyle(fontSize: 14)),
+                  ],
+                ),
+              ),
             ),
           ],
         );
