@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:confetti/confetti.dart';
+
+import 'color.dart'; // provides `colors` list
+import 'confetti.dart'; // provides `AppConfetti`
+
 import 'dart:async';
 import 'dart:math';
 
@@ -31,20 +35,6 @@ class _ColorGameScreenState extends State<ColorGameScreen>
 
   // Display "Round 0 of 10" initially, without changing logic.
   int get displayRound => (currentRound - 1).clamp(0, 10);
-
-  final List<Map<String, dynamic>> colors = const [
-    {'name': 'Red', 'color': Color(0xFFFF0000)}, // Pure red
-    {'name': 'Orange', 'color': Color(0xFFFFA500)}, // Pure orange
-    {'name': 'Yellow', 'color': Color(0xFFFFFF00)}, // Pure yellow
-    {'name': 'Green', 'color': Color(0xFF008000)}, // Pure green
-    {'name': 'Blue', 'color': Color(0xFF0000FF)}, // Pure blue
-    {'name': 'Purple', 'color': Color(0xFF800080)}, // Pure purple
-    {'name': 'Pink', 'color': Color(0xFFFFC0CB)}, // Standard pink
-    {'name': 'Brown', 'color': Color(0xFFA52A2A)}, // Standard brown
-    {'name': 'Black', 'color': Color(0xFF000000)}, // Black
-    {'name': 'White', 'color': Color(0xFFFFFFFF)}, // White
-    {'name': 'Gray', 'color': Color(0xFF808080)}, // Middle gray
-  ];
 
   @override
   void initState() {
@@ -83,10 +73,12 @@ class _ColorGameScreenState extends State<ColorGameScreen>
   }
 
   void startNewRound() {
+    // Use the full list from color.dart; do not force a fixed count.
     if (currentRound <= 10) {
       String next;
+      final rnd = Random();
       do {
-        next = colors[Random().nextInt(colors.length)]['name'];
+        next = colors[rnd.nextInt(colors.length)]['name'];
       } while (next == lastTarget && colors.length > 1);
       targetColor = next;
       lastTarget = next;
@@ -231,20 +223,30 @@ class _ColorGameScreenState extends State<ColorGameScreen>
   }
 
   Widget buildPaletteIcon() {
+    // Use up to six colors for the gradient ring (or fallback to defaults if fewer exist).
+    final gradientColors = <Color>[];
+    for (var i = 0; i < colors.length && gradientColors.length < 6; i++) {
+      final c = colors[i]['color'];
+      if (c is Color) gradientColors.add(c);
+    }
+    if (gradientColors.isEmpty) {
+      gradientColors.addAll(const [
+        Colors.red,
+        Colors.orange,
+        Colors.yellow,
+        Colors.green,
+        Colors.blue,
+        Colors.purple,
+      ]);
+    }
+
     return Container(
       width: 28,
       height: 28,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: LinearGradient(
-          colors: [
-            Colors.red,
-            Colors.orange,
-            Colors.yellow,
-            Colors.green,
-            Colors.blue,
-            Colors.purple,
-          ],
+          colors: gradientColors,
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -280,38 +282,67 @@ class _ColorGameScreenState extends State<ColorGameScreen>
     );
   }
 
-  // Responsive grid to fit all tiles on one screen using fixed tile height.
+  // Adaptive grid: uses all colors from color.dart and adjusts columns by width.
   Widget buildColorGrid(BoxConstraints constraints) {
-    const tileHeight = 72.0;
-    const tileSpacing = 10.0;
-    const crossAxisCount = 5;
+    final width = constraints.maxWidth;
+    const spacing = 10.0;
+    const horizontalPadding = 16.0;
+
+    // Decide columns by available width for a comfortable tile size.
+    // Rough target tile width ≈ 80–100px.
+    int crossAxisCount;
+    if (width >= 700) {
+      crossAxisCount = 7;
+    } else if (width >= 600) {
+      crossAxisCount = 6;
+    } else if (width >= 500) {
+      crossAxisCount = 5;
+    } else if (width >= 380) {
+      crossAxisCount = 4;
+    } else {
+      crossAxisCount = 3; // very small screens
+    }
+
+    // Compute tile width considering padding and spacing.
+    final usableWidth =
+        width - (horizontalPadding * 2) - (spacing * (crossAxisCount - 1));
+    final tileWidth = usableWidth / crossAxisCount;
+
+    // Set a compact height based on width, with min/max bounds.
+    final tileHeight = tileWidth.clamp(64.0, 100.0);
 
     return IgnorePointer(
       ignoring: showPopup,
       child: GridView.builder(
-        physics: const NeverScrollableScrollPhysics(),
+        physics: const AlwaysScrollableScrollPhysics(),
         shrinkWrap: true,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        padding: const EdgeInsets.symmetric(horizontal: horizontalPadding),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: crossAxisCount,
-          crossAxisSpacing: tileSpacing,
-          mainAxisSpacing: tileSpacing,
+          crossAxisSpacing: spacing,
+          mainAxisSpacing: spacing,
           mainAxisExtent: tileHeight,
         ),
         itemCount: colors.length,
         itemBuilder: (context, index) {
           final colorData = colors[index];
+          final Color bg = colorData['color'] as Color;
+          final brightness = ThemeData.estimateBrightnessForColor(bg);
+          final textColor = brightness == Brightness.light
+              ? Colors.black
+              : Colors.white;
+
           return ScaleTransition(
             scale: buttonAnimation,
             child: GestureDetector(
               onTap: () => onColorTapped(colorData['name']),
               child: Container(
                 decoration: BoxDecoration(
-                  color: colorData['color'],
+                  color: bg,
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: [
                     BoxShadow(
-                      color: (colorData['color'] as Color).withOpacity(0.35),
+                      color: bg.withOpacity(0.35),
                       blurRadius: 8,
                       offset: const Offset(0, 4),
                     ),
@@ -321,16 +352,16 @@ class _ColorGameScreenState extends State<ColorGameScreen>
                   child: Text(
                     colorData['name'],
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                      color: textColor,
                       fontFamily: 'Comic Neue',
                       shadows: [
                         Shadow(
-                          color: Colors.black38,
+                          color: Colors.black.withOpacity(0.25),
                           blurRadius: 2,
-                          offset: Offset(1, 1),
+                          offset: const Offset(1, 1),
                         ),
                       ],
                     ),
@@ -488,7 +519,12 @@ class _ColorGameScreenState extends State<ColorGameScreen>
             const SizedBox(height: 6),
             hint,
             const SizedBox(height: 12),
-            buildColorGrid(constraints),
+            // Full adaptive grid using every color from lib/color.dart
+            SizedBox(
+              // Constrain height so grid area becomes scrollable if needed
+              height: height * 0.55,
+              child: buildColorGrid(constraints),
+            ),
             const SizedBox(height: 8),
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
@@ -497,15 +533,6 @@ class _ColorGameScreenState extends State<ColorGameScreen>
           ],
         );
 
-        final likelyTooSmall = height < 640;
-        if (likelyTooSmall) {
-          return SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: body,
-            ),
-          );
-        }
         return body;
       },
     );
@@ -515,26 +542,16 @@ class _ColorGameScreenState extends State<ColorGameScreen>
       body: SafeArea(
         child: Stack(
           children: [
-            Align(alignment: Alignment.topCenter, child: content),
             Align(
               alignment: Alignment.topCenter,
-              child: ConfettiWidget(
-                confettiController: confettiController,
-                blastDirection: pi / 2,
-                particleDrag: 0.05,
-                emissionFrequency: 0.05,
-                numberOfParticles: 50,
-                gravity: 0.05,
-                shouldLoop: false,
-                colors: const [
-                  Colors.red,
-                  Colors.blue,
-                  Colors.green,
-                  Colors.yellow,
-                  Colors.purple,
-                  Colors.orange,
-                ],
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: content,
               ),
+            ),
+            AppConfetti(
+              controller: confettiController,
+              alignment: Alignment.topCenter,
             ),
             if (showPopup)
               Container(
